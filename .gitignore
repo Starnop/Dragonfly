@@ -4,6 +4,7 @@
 target
 .classpath
 .idea/
+.vscode/
 *.iml
 .akconfig
 .DS_Store

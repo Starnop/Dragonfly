@@ -59,6 +59,8 @@ func (s *supernodeRegister) Register(peerPort int) (*RegisterResult, *errors.DFG
 	s.ctx.ClientLogger.Infof("do register to one of %v", s.ctx.Node)
 	nodes, nLen := s.ctx.Node, len(s.ctx.Node)
 	req := s.constructRegisterRequest(peerPort)
+	s.ctx.ClientLogger.Infof("constructRegisterRequest %+v", req)
+
 	for i = 0; i < nLen; i++ {
 		req.SupernodeIP = nodes[i]
 		resp, e = s.api.Register(nodes[i], req)

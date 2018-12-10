@@ -35,6 +35,7 @@ import (
 // Run is running cli.
 func Run() {
 	initialize()
+	cfg.Ctx.ClientLogger.Infof("initialize successfully")
 	err := core.Start(cfg.Ctx)
 	if err != nil {
 		util.Printer.Println(resultMsg(cfg.Ctx, time.Now(), err))

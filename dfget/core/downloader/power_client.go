@@ -18,9 +18,12 @@ package downloader
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/dragonflyoss/Dragonfly/dfget/config"
@@ -37,15 +40,81 @@ type PowerClient struct {
 	taskID      string
 	node        string
 	pieceTask   *types.PullPieceTaskResponseContinueData
-	rateLimiter *util.RateLimiter
 	ctx         *config.Context
+	queue       util.Queue
+	clientQueue util.Queue
+}
+
+// Run starts run the task.
+func (pc *PowerClient) Run() (err error) {
+	pieceMetaArr := strings.Split(pc.pieceTask.PieceMd5, ":")
+	pieceMD5 := pieceMetaArr[0]
+	dstIP := pc.pieceTask.PeerIP
+	peerPort := pc.pieceTask.PeerPort
+
+	defer func() {
+		if err != nil {
+			pc.ctx.ClientLogger.Errorf("read piece cont error:%s from dst:%s", err, dstIP)
+			// TODO handle dst_ip == self.node
+		}
+	}()
+
+	_, err = util.CheckConnect(dstIP, peerPort, -1)
+	if dstIP == pc.node || err == nil {
+		url := fmt.Sprintf("http://%s:%d%s", dstIP, peerPort, pc.pieceTask.Path)
+		startTime := time.Now().Unix()
+
+		headers := make(map[string]string)
+		headers["Range"] = pc.pieceTask.Range
+		headers["pieceNum"] = strconv.Itoa(pc.pieceTask.PieceNum)
+		headers["pieceSize"] = strconv.Itoa(pc.pieceTask.PieceSize)
+		resp, err := httpGetWithHeaders(url, headers)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+
+		buf := make([]byte, 256*1024)
+		pieceCont := bytes.NewBuffer(buf)
+		reader := NewLimitReader(resp.Body, pc.ctx.LocalLimit, pieceMD5 != "")
+		total, err := pieceCont.ReadFrom(reader)
+		pc.ctx.ClientLogger.Infof("get pieceCont total: %d", total)
+		if err != nil {
+			return err
+		}
+		// TODO handle read timeout
+
+		readFinish := time.Now().Unix()
+		realMd5 := reader.Md5()
+		if realMd5 != pieceMD5 {
+			pc.ctx.ClientLogger.Errorf("piece range:%s error,realMd5:%s,expectedMd5:%s,dstIp:%s,total:%d", pc.pieceTask.Range, realMd5, pieceMD5, dstIP, total)
+			return fmt.Errorf("md5 not match, expected:%s real:%s", pieceMD5, realMd5)
+		}
+		piece := NewPieceContent(pc.taskID, pc.node, pc.pieceTask.Cid, pc.pieceTask.Range, config.ResultSemiSuc, config.TaskStatusRunning, pieceCont)
+		// NOTE should unify the type
+		piece.PieceSize = int32(pc.pieceTask.PieceSize)
+		piece.PieceNum = pc.pieceTask.PieceNum
+		pc.clientQueue.Put(piece)
+		pc.queue.Put(piece)
+
+		endTime := time.Now().Unix()
+		timeDuring := endTime - startTime
+		if timeDuring > 2.0 {
+			pc.ctx.ClientLogger.Warnf("client range:%s cost:%.3f from peer:%s,its readCost:%.3f,cont length:%d", pc.pieceTask.Range, timeDuring, dstIP, readFinish-startTime, total)
+		}
+		return nil
+	}
+
+	piece := NewPiece(pc.taskID, pc.node, pc.pieceTask.Cid, pc.pieceTask.Range, config.ResultFail, config.TaskStatusRunning)
+	pc.queue.Put(piece)
+	return nil
 }
 
 // ----------------------------------------------------------------------------
 // ClientWriter
 
 // NewClientWriter creates and initialize a ClientWriter instance.
-func NewClientWriter(taskFileName string, cid string, clientQueue util.Queue) (*ClientWriter, error) {
+func NewClientWriter(taskFileName, cid string, clientQueue util.Queue) (*ClientWriter, error) {
 	clientWriter := &ClientWriter{
 		taskFileName: taskFileName,
 		cid:          cid,

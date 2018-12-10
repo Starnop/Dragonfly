@@ -73,6 +73,7 @@ func (p2p *P2PDownloader) init() {
 
 	p2p.clientQueue = util.NewQueue(config.DefaultClientQueueSize)
 	p2p.writerDone = make(chan struct{})
+	p2p.startClientWriter(p2p.taskFileName, "", p2p.clientQueue)
 
 	p2p.pieceSet = make(map[string]bool)
 }
@@ -180,7 +181,31 @@ func (p2p *P2PDownloader) pullRate(data *types.PullPieceTaskResponseContinueData
 
 }
 
-func (p2p *P2PDownloader) startTask(data *types.PullPieceTaskResponseContinueData) {
+func (p2p *P2PDownloader) startClientWriter(taskFileName, cid string, clientQueue util.Queue) error {
+	clientWriter, err := NewClientWriter(taskFileName, cid, clientQueue)
+	if err != nil {
+		return err
+	}
+	go func() {
+		clientWriter.Run()
+	}()
+	return nil
+}
+
+func (p2p *P2PDownloader) startTask(data *types.PullPieceTaskResponseContinueData) error {
+	errChan := make(chan error)
+	go func() {
+		powerClient := &PowerClient{
+			taskID:      p2p.taskID,
+			node:        p2p.node,
+			pieceTask:   data,
+			ctx:         p2p.Ctx,
+			queue:       p2p.queue,
+			clientQueue: p2p.clientQueue,
+		}
+		errChan <- powerClient.Run()
+	}()
+	return <-errChan
 }
 
 func (p2p *P2PDownloader) getItem(latestItem *Piece) (bool, *Piece) {
@@ -197,10 +222,16 @@ func (p2p *P2PDownloader) getItem(latestItem *Piece) (bool, *Piece) {
 			item.SuperNode = p2p.node
 			item.TaskID = p2p.taskID
 		}
+		p2p.Ctx.ClientLogger.Warnf("get Item %+v", item)
+		for k, v := range p2p.pieceSet {
+			p2p.Ctx.ClientLogger.Warnf("get Item pieceSet key: %s,value: %t", k, v)
+		}
 		if item.Range != "" {
-			ok, v := p2p.pieceSet[item.Range]
+			v, ok := p2p.pieceSet[item.Range]
+			p2p.Ctx.ClientLogger.Warnf("pieceSet get %s is %t,value is %t", item.Range, ok, v)
+
 			if !ok {
-				p2p.Ctx.ClientLogger.Warnf("pieceRange:%s is neither running nor success")
+				p2p.Ctx.ClientLogger.Warnf("pieceRange:%s is neither running nor success", item.Range)
 				return false, latestItem
 			}
 			if !v && (item.Result == config.ResultSemiSuc ||
@@ -246,8 +277,10 @@ func (p2p *P2PDownloader) processPiece(response *types.PullPieceTaskResponse,
 
 	data := response.ContinueData()
 	for _, pieceTask := range data {
+		p2p.Ctx.ClientLogger.Warnf("get pieceTask: %+v", pieceTask)
 		pieceRange := pieceTask.Range
 		ok, v := p2p.pieceSet[pieceRange]
+
 		if ok && v {
 			sucCount++
 			p2p.queue.Put(NewPiece(p2p.taskID,
@@ -265,7 +298,7 @@ func (p2p *P2PDownloader) processPiece(response *types.PullPieceTaskResponse,
 			hasTask = true
 		}
 	}
-	if hasTask {
+	if !hasTask {
 		p2p.Ctx.ClientLogger.Warnf("has not available pieceTask,maybe resource lack")
 	}
 	if sucCount > 0 {

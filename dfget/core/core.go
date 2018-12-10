@@ -56,14 +56,17 @@ func Start(ctx *config.Context) *errors.DFGetError {
 	if err = prepare(ctx); err != nil {
 		return errors.New(1100, err.Error())
 	}
+	ctx.ServerLogger.Infof("prepare sucessfully")
 
 	if result, err = registerToSuperNode(ctx, register); err != nil {
 		return errors.New(1200, err.Error())
 	}
+	ctx.ServerLogger.Infof("registerToSuperNode sucessfully")
 
 	if err = downloadFile(ctx, supernodeAPI, register, result); err != nil {
 		return errors.New(1300, err.Error())
 	}
+	ctx.ServerLogger.Infof("downloadFile sucessfully")
 
 	return nil
 }
