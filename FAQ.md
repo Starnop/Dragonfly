@@ -25,25 +25,6 @@ Dragonfly makes it simple and cost-effective to set up, operate, and scale any 
 
 No, Dragonfly can be used to distribute all kinds of files, not only container images. For downloading files by Dragonfly, please refer to [Download a File](https://github.com/dragonflyoss/Dragonfly/blob/master/docs/quick_start/README.md#downloading-a-file-with-dragonfly). For pulling images by Dragonfly, please refer to [Pull an Image](https://github.com/dragonflyoss/Dragonfly/blob/master/docs/quick_start/README.md#pulling-an-image-with-dragonfly).
 
-## What is SuperNode
-
-SuperNode is a long-time process with two primary responsibilities:
-
-- It's the tracker and scheduler in the P2P network that choose appropriate downloading net-path for each peer.
-- It's also a CDN server that caches downloaded data from source to avoid downloading same files repeatedly.
-
-## What is dfget
-
-Dfget is the client of Dragonfly used for downloading files. It's similar to using wget.
-
-At the same time, it also plays the role of peer, which can transfer data between each other in p2p network.
-
-## What is dfdaemon
-
-Dfdaemon is a local long-running process which is used for translating images pulling request from container engine. It establishes a proxy between container engine and registry.
-
-Dfdaemon filters out layer fetching requests from all requests send by dockerd/pouchd when pulling images, then it uses dfget to downloading these layers.
-
 ## What is the sequence of supernode's CDN functionality and P2P distribution
 
 When dfget starts to pull an image which has not been cached in supernode yet, supernode will do as the following sequence:
