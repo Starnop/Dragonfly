@@ -1,0 +1,10 @@
+分片分布最稀疏优先策略：每次优先选择在整个P2P网络中分片数最少的分片号进行下载，这样就能使每个分片在P2P网络中的分布达到一种动态均衡，避免出现“紧张资源”，从而影响下载进度；
+分片最邻近策略：针对某个客户节点，优先选择距离当前正在下载的分片最近的分片号，这样可以使客户端近似达到一种顺序读写的效果，进而提升文件I/O效率；
+节点最近邻策略：针对某个客户节点，优先选择距离它最近的节点来提供分片数据，这样可以避免远距离传输和跨地区、跨国际的带宽成本；
+局部黑名单与全局黑名单：当客户节点A从客户节点B下载失败后，B将成为A的局部黑名单，此后分配给A的分片任务会过滤掉B；同时当以B为目标的分片任务失败次数达到一定阈值时，B将成为全局黑名单，之后所有客户节点的分片任务都会把B过滤掉；
+自我孤立机制：当客户节点A从其他客户节点下载的失败次数达到一定阈值时，那么A的后续分片任务只会通过超级节点下载，同时也会加入全局黑名单，这样节点A就不再和其他客户节点产生交互，即孤立自我；
+节点负载控制机制：该机制会控制每个节点可以同时提供的上传分片数和下载分片数以及作为目标节点的优先级。
+上述策略和机制中：分片分布最稀疏优先策略的输出是分片最邻近策略的输入；黑名单机制和自我孤立机制可以使得整个P2P网络尽快清除掉异常节点；节点负载控制机制和节点最邻近策略遵循“人人为我，我为人人”的思想，使每个节点都能有效地提供分片服务。
+
+Among the above mentioned: the output of the `Distribute the number of pieces evenly` is the input of the `Distance priority principle`; the    `blacklist mechanism` and the `self-isolation mechanism` can make the entire P2P network clear the abnormal peer as soon as possible; the `Peer load balancing mechanism` follows the idea of ​​"everyone is for me, I am for everyone", so that each peer can effectively provide services.
+

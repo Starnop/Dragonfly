@@ -25,21 +25,50 @@ Dragonfly makes it simple and cost-effective to set up, operate, and scale any 
 
 No, Dragonfly can be used to distribute all kinds of files, not only container images. For downloading files by Dragonfly, please refer to [Download a File](https://github.com/dragonflyoss/Dragonfly/blob/master/docs/quick_start/README.md#downloading-a-file-with-dragonfly). For pulling images by Dragonfly, please refer to [Pull an Image](https://github.com/dragonflyoss/Dragonfly/blob/master/docs/quick_start/README.md#pulling-an-image-with-dragonfly).
 
-## What is the sequence of supernode's CDN functionality and P2P distribution
+## What is the sequence of P2P distribution
 
-When dfget starts to pull an image which has not been cached in supernode yet, supernode will do as the following sequence:
+Supernode will maintain a bitmap information about the correspondence between peers and pieces. When dfget really starts the download task, Supernode will return the info for several pieces（4 in default）for download according to the scheduler. **It depends on the scheduler to decide whether the download task will be dispatched to the supernode or other peers.** As for the details of the scheduler, please refer to [scheduler algorithm](#what-is-the-peer-scheduling-algorithm-in-default)
 
-- First Step: supernode triggers the downloading task:
+## How supernode and peers manage cache files
+
+Supernode will download files and cache them via CDN, more info refers to [The sequence of supernode's CDN functionality](#what-is-the-sequence-of-supernode's-cdn-functionality).
+
+The dfget will trigger the cache before the download is complete, saving the downloaded file in a specific location (default is “.small-dragonfly/data”, suffixed with ".server").
+
+After, there are some things we need to pay attention to:
+
+1. Files being transferred over the P2P network must exist on the supernode. If the file does not exist on the supernode, there is no corresponding taskID, and the corresponding bitmap information, it can not be scheduled, that is the file can be transferred in the P2P network only if there is cache information on the supernode.
+2. The cache on the peees is not coupled to the cache on the Supernode, and each is responsible for the life cycle.
+
+## What is the sequence of supernode's CDN functionality
+
+When dfget register a task to supernode, supernode will check whether the file to be downloaded has a cache locally.
+
+If the file to be downloaded which has not been cached in supernode yet, supernode will do as the following sequence:
+
+- First Step: supernode triggers the downloading task asynchronously:
   - fetch the file/image length;
   - divide the length into pieces;
-  - start to download the file piece by piece;
+  - start to download the file piece by piece and store it locally;
 - Second Step:
   - supernode finishes to download one piece
   - supernode starts the P2P distribution work for the downloaded one piece among peers;
 
-In a word, supernode does not have to wait for all the piece downloadings finished, it can concurrently start piece downloading once one piece downloaded.
+If the file to be downloaded which has been cached in supernode, supernode will back to the source to determine if there is an update with headers `If-None-Match:<eTag>` and `If-Modified-Since:<lastModified>`.
 
-## What is the peer scheduling algorithm of supernpde when many peers start to pull the same file
+In addition, supernode does not have to wait for all the piece downloadings finished, it can concurrently start piece downloading once one piece downloaded.
+
+## What if you kill the dfget server process or delete the source files
+
+If a file on the peer is deleted manually or by GC, the supernode does not know that. In the subsequent scheduling, if the download fails from this peer multiple times, the scheduler will add it to blacklist. So do with that if the server process is killed or other abnormal conditions.
+
+## What is the peer scheduling algorithm in default
+
+- Distribute the number of pieces evenly. Select the piece with the smallest number in the entire P2P network so that the distribution of each piece in the P2P network can be dynamically balanced to avoid "Nervous resources", which delaying the entire download progress.
+- Distance priority principle. For a client node, the piece closest to the piece currently being downloaded is preferentially selected, so that the client can approximate the effect of sequential read and write, thereby improving file I/O efficiency.
+- Local blacklist and global blacklist mechanism. An example is easier to understand: When peer A fails to download from peer B, B will become the local blacklist of A, and then the download tasks of A will filter B out; When the number of failed downloads from B reaches a certain threshold, B will become the global blacklist, and all the download tasks will filter B out.
+- Self-isolation mechanism. When the number of failures of peer A downloading from other peers reaches a certain threshold, then the subsequent download tasks of A will only be downloaded through the super node, and will also be added to the global blacklist, so the peer A will no longer interact with peers other than the supernode.
+- Peer load balancing mechanism. This mechanism controls the number of upload pieces and download pieces that each peer can provide simultaneously and the priority as the target peer.
 
 ## What is the size of block(piece) when distribution
 
