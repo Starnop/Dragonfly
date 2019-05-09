@@ -253,3 +253,9 @@ func CheckConnect(ip string, port int, timeout int) (localIP string, e error) {
 	}
 	return
 }
+
+// GetContentLength send a head request to get file length.
+func GetContentLength(url string, headers map[string]string) (int64, error) {
+	// TODO
+	return -1, nil
+}
