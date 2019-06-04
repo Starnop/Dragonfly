@@ -20,29 +20,21 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 
 	"github.com/dragonflyoss/Dragonfly/common/util"
+	"github.com/dragonflyoss/Dragonfly/dfdaemon/constant"
 
 	"github.com/pkg/errors"
 )
 
-const officialRegistry = "https://index.docker.io"
-
 // -----------------------------------------------------------------------------
 // Properties
-
-// NewProperties create a new properties with default values.
-func NewProperties() *Properties {
-	u, _ := NewURL(officialRegistry)
-	return &Properties{
-		RegistryMirror: &RegistryMirror{
-			Remote: u,
-		},
-	}
-}
 
 // Properties holds all configurable properties of dfdaemon.
 // The default path is '/etc/dragonfly/dfdaemon.yml'
@@ -88,6 +80,82 @@ type Properties struct {
 	// by dfdaemon. Dfdaemon will be able to proxy requests from them with dfget
 	// if the url matches the proxy rules. The first matched rule will be used.
 	HijackHTTPS *HijackConfig `yaml:"hijack_https"`
+
+	// https options
+	Port    uint   `yaml:"port"`
+	HostIP  string `yaml:"hostIp"`
+	CertPem string `yaml:"certpem"`
+	KeyPem  string `yaml:"keypem"`
+
+	// dfget config
+	SuperNodes []string `yaml:"supernodes"`
+	DFRepo     string   `yaml:"localrepo"`
+	DFPath     string   `yaml:"dfpath"`
+	RateLimit  string   `yaml:"ratelimit"`
+	URLFilter  string   `yaml:"urlfilter"`
+	CallSystem string   `yaml:"callsystem"`
+	Notbs      bool     `yaml:"notbs"`
+
+	Verbose bool `yaml:"verbose"`
+
+	MaxProcs int `yaml:"maxprocs"`
+}
+
+// Validate validates the config
+func (p *Properties) Validate() *Error {
+	if p.Port <= 2000 || p.Port > 65535 {
+		return newErr(
+			constant.CodeExitPortInvalid,
+			"invalid port %d", p.Port,
+		)
+	}
+
+	if !filepath.IsAbs(p.DFRepo) {
+		return newErr(
+			constant.CodeExitPathNotAbs,
+			"local repo %s is not absolute", p.DFRepo,
+		)
+	}
+
+	if _, err := os.Stat(p.DFPath); err != nil && os.IsNotExist(err) {
+		return newErr(
+			constant.CodeExitDfgetNotFound,
+			"dfpath %s not found", p.DFPath,
+		)
+	}
+
+	if ok, _ := regexp.MatchString("^[[:digit:]]+[MK]$", p.RateLimit); !ok {
+		return newErr(
+			constant.CodeExitRateLimitInvalid,
+			"invalid rate limit %s", p.RateLimit,
+		)
+	}
+
+	return nil
+}
+
+// DFGetConfig returns config for dfget downloader
+func (p *Properties) DFGetConfig() DFGetConfig {
+	return DFGetConfig{
+		SuperNodes: p.SuperNodes,
+		DFRepo:     p.DFRepo,
+		DFPath:     p.DFPath,
+		RateLimit:  p.RateLimit,
+		URLFilter:  p.URLFilter,
+		CallSystem: p.CallSystem,
+		Notbs:      p.Notbs,
+	}
+}
+
+// DFGetConfig configures how dfdaemon calls dfget
+type DFGetConfig struct {
+	SuperNodes []string `yaml:"supernodes"`
+	DFRepo     string   `yaml:"localrepo"`
+	DFPath     string   `yaml:"dfpath"`
+	RateLimit  string   `yaml:"ratelimit"`
+	URLFilter  string   `yaml:"urlfilter"`
+	CallSystem string   `yaml:"callsystem"`
+	Notbs      bool     `yaml:"notbs"`
 }
 
 // RegistryMirror configures the mirror of the official docker registry
@@ -178,6 +246,11 @@ func (u *URL) MarshalJSON() ([]byte, error) {
 	return json.Marshal(u.String())
 }
 
+// MarshalYAML implements yaml.Marshaller to print the url
+func (u *URL) MarshalYAML() (interface{}, error) {
+	return u.String(), nil
+}
+
 // CertPool is a wrapper around x509.CertPool, which can be unmarshalled and
 // constructed from a list of filenames
 type CertPool struct {
@@ -250,6 +323,11 @@ func (r *Regexp) MarshalJSON() ([]byte, error) {
 	return json.Marshal(r.String())
 }
 
+// MarshalYAML implements yaml.Marshaller to print the regexp
+func (r *Regexp) MarshalYAML() (interface{}, error) {
+	return r.String(), nil
+}
+
 // certPoolFromFiles returns an *x509.CertPool constructed from the given files.
 // If no files are given, (nil, nil) will be returned.
 func certPoolFromFiles(files ...string) (*x509.CertPool, error) {
@@ -303,4 +381,27 @@ func NewProxy(regx string, useHTTPS bool, direct bool) (*Proxy, error) {
 // Match checks if the given url matches the rule
 func (r *Proxy) Match(url string) bool {
 	return r.Regx != nil && r.Regx.MatchString(url)
+}
+
+// Error is an error with exit code
+type Error struct {
+	code int
+	msg  string
+}
+
+func newErr(code int, f string, args ...interface{}) *Error {
+	return &Error{code, fmt.Sprintf(f, args...)}
+}
+
+// Error implements the error interface
+func (err *Error) Error() string {
+	return fmt.Sprintf("[%d] %s", err.code, err.msg)
+}
+
+// Code returns the exit code
+func (err *Error) Code() int {
+	if err == nil {
+		return 0
+	}
+	return err.code
 }
