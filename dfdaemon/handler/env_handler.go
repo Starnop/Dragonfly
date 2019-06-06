@@ -17,25 +17,15 @@
 package handler
 
 import (
-	"fmt"
+	"encoding/json"
 	"net/http"
 
 	"github.com/sirupsen/logrus"
-
-	"github.com/dragonflyoss/Dragonfly/dfdaemon/global"
+	"github.com/spf13/viper"
 )
 
 // getEnv returns the environments of dfdaemon
 func getEnv(w http.ResponseWriter, r *http.Request) {
 	logrus.Debugf("access:%s", r.URL.String())
-
-	env := make(map[string]interface{})
-
-	env["dfPattern"] = global.CopyDfPattern()
-
-	env["home"] = global.HomeDir
-
-	env["param"] = global.CommandLine
-
-	w.Write([]byte(fmt.Sprintf("%+v", env)))
+	json.NewEncoder(w).Encode(viper.AllSettings())
 }
