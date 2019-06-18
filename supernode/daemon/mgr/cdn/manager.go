@@ -166,7 +166,7 @@ func (cm *Manager) handleCDNResult(ctx context.Context, task *types.TaskInfo, re
 }
 
 func (cm *Manager) updateLastModifiedAndETag(ctx context.Context, taskID, lastModified, eTag string) {
-	lastModifiedInt, _ := strconv.ParseInt(lastModified, 10, 64)
+	lastModifiedInt, _ := cutil.ConvertTimeStringToInt(lastModified)
 	if err := cm.metaDataManager.updateLastModifiedAndETag(ctx, taskID, lastModifiedInt, eTag); err != nil {
 		logrus.Errorf("failed to update LastModified(%s) and ETag(%s) for taskID %s: %v", lastModified, eTag, taskID, err)
 	}
