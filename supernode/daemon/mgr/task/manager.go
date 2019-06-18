@@ -2,6 +2,7 @@ package task
 
 import (
 	"context"
+	"time"
 
 	"github.com/dragonflyoss/Dragonfly/apis/types"
 	errorType "github.com/dragonflyoss/Dragonfly/common/errors"
@@ -56,6 +57,10 @@ func NewManager(cfg *config.Config, peerMgr mgr.PeerMgr, dfgetTaskMgr mgr.DfgetT
 
 // Register will not only register a task.
 func (tm *Manager) Register(ctx context.Context, req *types.TaskCreateRequest) (taskCreateResponse *types.TaskCreateResponse, err error) {
+	taskRegisterTime := time.Now()
+	defer func() {
+		logrus.Infof("Performance statistics: task register time: %v", time.Since(taskRegisterTime))
+	}()
 	// Step1: validate params
 	if err := validateParams(req); err != nil {
 		return nil, err
@@ -145,6 +150,10 @@ func (tm *Manager) Update(ctx context.Context, taskID string, taskInfo *types.Ta
 
 // GetPieces get the pieces to be downloaded based on the scheduling result.
 func (tm *Manager) GetPieces(ctx context.Context, taskID, clientID string, req *types.PiecePullRequest) (bool, interface{}, error) {
+	taskGetPiecesTime := time.Now()
+	defer func() {
+		logrus.Infof("Performance statistics: task get pieces time: %v with request: %+v", time.Since(taskGetPiecesTime), req)
+	}()
 	logrus.Debugf("get pieces request: %+v with taskID(%s) and clientID(%s)", req, taskID, clientID)
 
 	// convert piece result and dfgetTask status to dfgetTask status code
@@ -186,6 +195,7 @@ func (tm *Manager) UpdatePieceStatus(ctx context.Context, taskID, pieceRange str
 			"failed to parse pieceRange: %s to pieceNum for taskID: %s, clientID: %s",
 			pieceRange, taskID, pieceUpdateRequest.ClientID)
 	}
+	logrus.Infof("bugfix: start to update piece status with taskID(%s) pieceNum(%d) req: %+v", taskID, pieceNum, pieceUpdateRequest)
 
 	// get dfgetTask according to the CID
 	srcDfgetTask, err := tm.dfgetTaskMgr.Get(ctx, pieceUpdateRequest.ClientID, taskID)

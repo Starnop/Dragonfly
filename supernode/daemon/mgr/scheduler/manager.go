@@ -147,6 +147,7 @@ func (sm *Manager) getPieceResults(ctx context.Context, taskID, peerID string, p
 			if err != nil {
 				return nil, errors.Wrapf(errorType.ErrUnknowError, "failed to get peerIDs for pieceNum: %d of taskID: %s", pieceNums[i], taskID)
 			}
+			logrus.Debugf("get peerIDs(%v) for pieceNum: %d", peerIDs, pieceNums[i])
 			dstPID = sm.tryGetPID(ctx, taskID, pieceNums[i], peerIDs)
 		}
 
@@ -173,29 +174,34 @@ func (sm *Manager) getPieceResults(ctx context.Context, taskID, peerID string, p
 func (sm *Manager) tryGetPID(ctx context.Context, taskID string, pieceNum int, peerIDs []string) (dstPID string) {
 	defer func() {
 		if dstPID == "" {
+			logrus.Infof("bugfix: failed to try get pid and use superPID for pieceNum:%s", pieceNum)
 			dstPID = sm.cfg.GetSuperPID()
 		}
 	}()
 
 	for i := 0; i < len(peerIDs); i++ {
+		logrus.Infof("bugfix: start to try get pid: %s for pieceNum: %d", peerIDs[i], pieceNum)
 		// if failed to get peerState, and then it should not be needed.
 		peerState, err := sm.progressMgr.GetPeerStateByPeerID(ctx, peerIDs[i])
 		if err != nil {
 			sm.deletePeerIDByPieceNum(ctx, taskID, pieceNum, peerIDs[i])
 			continue
 		}
+		logrus.Infof("success to get peerState %s", peerIDs[i])
 
 		// if the service has been down, and then it should not be needed.
 		if peerState.ServiceDownTime > 0 {
 			sm.deletePeerIDByPieceNum(ctx, taskID, pieceNum, peerIDs[i])
 			continue
 		}
+		logrus.Infof("success to get ServiceDownTime %s", peerIDs[i])
 
 		// if service has failed for EliminationLimit times, and then it should not be needed.
 		if peerState.ServiceErrorCount >= config.EliminationLimit {
 			sm.deletePeerIDByPieceNum(ctx, taskID, pieceNum, peerIDs[i])
 			continue
 		}
+		logrus.Infof("success to get ServiceErrorCount %s", peerIDs[i])
 
 		// if the v is in the blackList, try the next one.
 		blackInfo, err := sm.progressMgr.GetBlackInfoByPeerID(ctx, peerIDs[i])
@@ -206,10 +212,12 @@ func (sm *Manager) tryGetPID(ctx context.Context, taskID string, pieceNum int, p
 		if blackInfo != nil && isExistInMap(blackInfo, peerIDs[i]) {
 			continue
 		}
+		logrus.Infof("success to get blackInfo %s", peerIDs[i])
 
 		if peerState.ProducerLoad < config.PeerUpLimit {
 			return peerIDs[i]
 		}
+		logrus.Infof("success to get ProducerLoad %s", peerIDs[i])
 	}
 	return
 }

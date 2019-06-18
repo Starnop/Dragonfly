@@ -123,6 +123,7 @@ func (s *Server) pullPieceTask(ctx context.Context, rw http.ResponseWriter, req 
 		}
 		request.DstPID = dstDfgetTask.PeerID
 	}
+	logrus.Infof("bugfix: get pullPieceTask req: %+v", request)
 
 	isFinished, data, err := s.TaskMgr.GetPieces(ctx, taskID, srcCID, request)
 	if err != nil {
@@ -167,6 +168,10 @@ func (s *Server) pullPieceTask(ctx context.Context, rw http.ResponseWriter, req 
 			Path:      v.Path,
 		})
 	}
+	for _, v := range datas {
+		logrus.Infof("bugfix: success to get piece infos: %+v", v)
+	}
+
 	return EncodeResponse(rw, http.StatusOK, &types.ResultInfo{
 		Code: constants.CodePeerContinue,
 		Data: datas,
@@ -205,6 +210,7 @@ func (s *Server) reportServiceDown(ctx context.Context, rw http.ResponseWriter, 
 	taskID := params.Get("taskId")
 	cID := params.Get("cid")
 
+	logrus.Infof("get service down req with taskID:%s and cID: %s", taskID, cID)
 	dfgetTask, err := s.DfgetTaskMgr.Get(ctx, cID, taskID)
 	if err != nil {
 		return err

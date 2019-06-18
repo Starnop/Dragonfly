@@ -37,6 +37,11 @@ func (pm *Manager) updatePieceProgress(taskID, srcPID string, pieceNum int) erro
 		}
 	}
 
+	if pm.cfg.IsSuperPID(srcPID) {
+		return nil
+	}
+	logrus.Infof("bugfix: get supernode pid: %s", pm.cfg.GetSuperPID())
+
 	return pstate.add(srcPID)
 }
 

@@ -5,6 +5,7 @@ import (
 	"crypto/md5"
 	"path"
 	"strconv"
+	"time"
 
 	"github.com/dragonflyoss/Dragonfly/apis/types"
 	cutil "github.com/dragonflyoss/Dragonfly/common/util"
@@ -59,18 +60,27 @@ func (cm *Manager) TriggerCDN(ctx context.Context, task *types.TaskInfo) (*types
 	if httpFileLength == 0 {
 		httpFileLength = -1
 	}
+	cdnStartTime := time.Now()
+	defer func() {
+		logrus.Infof("Performance statistics: cdn all process: %v", time.Since(cdnStartTime))
+	}()
 
 	cm.cdnLocker.GetLock(task.ID, false)
 	defer cm.cdnLocker.ReleaseLock(task.ID, false)
 	// detect Cache
+	cdnDetectTime := time.Now()
 	startPieceNum, metaData, err := cm.detector.detectCache(ctx, task)
 	if err != nil {
 		logrus.Errorf("failed to detect cache for task %s: %v", task.ID, err)
 	}
+	logrus.Infof("Performance statistics: cdn detect process: %v", time.Since(cdnDetectTime))
+
+	cdnReportTime := time.Now()
 	fileMD5, updateTaskInfo, err := cm.cdnReporter.reportCache(ctx, task.ID, metaData, startPieceNum)
 	if err != nil {
 		logrus.Errorf("failed to report cache for taskId: %s : %v", task.ID, err)
 	}
+	logrus.Infof("Performance statistics: cdn report process: %v", time.Since(cdnReportTime))
 
 	if startPieceNum == -1 {
 		logrus.Infof("cache full hit for taskId:%s on local", task.ID)
@@ -85,21 +95,29 @@ func (cm *Manager) TriggerCDN(ctx context.Context, task *types.TaskInfo) (*types
 	pieceContSize := task.PieceSize - config.PieceWrapSize
 
 	// start to download the source file
+	cdnDownloadRequestTime := time.Now()
 	resp, err := cm.download(ctx, task.ID, task.TaskURL, task.Headers, startPieceNum, httpFileLength, pieceContSize)
 	if err != nil {
 		return getUpdateTaskInfoWithStatusOnly(types.TaskInfoCdnStatusFAILED), err
 	}
 	defer resp.Body.Close()
+	logrus.Infof("Performance statistics: cdn download request process: %v", time.Since(cdnDownloadRequestTime))
 
 	cm.updateLastModifiedAndETag(ctx, task.ID, resp.Header.Get("Last-Modified"), resp.Header.Get("Etag"))
 	reader := cutil.NewLimitReaderWithLimiterAndMD5Sum(resp.Body, cm.limiter, fileMD5)
+	cdnReaderTime := time.Now()
 	downloadMetadata, err := cm.writer.startWriter(ctx, cm.cfg, reader, task, startPieceNum, httpFileLength, pieceContSize)
 	if err != nil {
 		logrus.Errorf("failed to write for task %s: %v", task.ID, err)
 		return nil, err
 	}
+	logrus.Infof("Performance statistics: cdn writer process: %v", time.Since(cdnReaderTime))
 
 	realMD5 := reader.Md5()
+	cdnHandleTime := time.Now()
+	defer func() {
+		logrus.Infof("Performance statistics: cdn handle result process: %v", time.Since(cdnHandleTime))
+	}()
 	success, err := cm.handleCDNResult(ctx, task, realMD5, httpFileLength, downloadMetadata.realHTTPFileLength, downloadMetadata.realFileLength)
 	if err != nil || success == false {
 		return getUpdateTaskInfoWithStatusOnly(types.TaskInfoCdnStatusFAILED), err

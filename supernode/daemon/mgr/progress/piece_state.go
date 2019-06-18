@@ -24,6 +24,7 @@ func newPieceState() *pieceState {
 // add a peerID for the corresponding piece which means that
 // there is a new peer node that owns this piece.
 func (ps *pieceState) add(peerID string) error {
+	logrus.Infof("bugfix: start to add peerID(%s) into pieceState", peerID)
 	if cutil.IsEmptyStr(peerID) {
 		return errors.Wrap(errorType.ErrEmptyValue, "peerID")
 	}
